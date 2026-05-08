@@ -1,0 +1,17 @@
+{
+  "too_dark_if_less_than": 40.0,
+  "severe_dark_threshold": 10.0,
+  "too_bright_if_greater_than": 220.0,
+  "low_contrast_if_less_than": 25.0,
+  "blurry_if_edge_score_less_than": 5.0,
+  "saturation_pixel_threshold": 235.0,
+  "saturated_ratio_threshold": 0.25,
+  "delete_edge_threshold": 5.0,
+  "delete_contrast_threshold": 15.0,
+  "penalty_blurry": 35,
+  "penalty_too_dark": 25,
+  "penalty_too_bright": 25,
+  "penalty_low_contrast": 20,
+  "keep_if_score_gte": 70,
+  "delete_if_score_lt": 40
+}
