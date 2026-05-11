@@ -17,7 +17,17 @@ void computeCPUMetrics(const cv::Mat& bgr, ImageMetrics& out, const Thresholds& 
     cv::Sobel(gray, sx, CV_32F, 1, 0, 3);
     cv::Sobel(gray, sy, CV_32F, 0, 1, 3);
     cv::magnitude(sx, sy, mag);
-    out.edge_score = static_cast<float>(cv::mean(mag)[0]);
+    // Match the CUDA kernel exactly: only interior pixels (skip the 1-pixel
+    // border on each side) are averaged. cv::Sobel uses reflection at the
+    // border which gives different border values than the CUDA kernel's
+    // "skip border" behavior; restricting the average to the interior
+    // eliminates that mismatch.
+    if (gray.cols > 2 && gray.rows > 2) {
+        cv::Rect interior(1, 1, gray.cols - 2, gray.rows - 2);
+        out.edge_score = static_cast<float>(cv::mean(mag(interior))[0]);
+    } else {
+        out.edge_score = static_cast<float>(cv::mean(mag)[0]);
+    }
 
     cv::Mat sat_mask = gray > t.saturation_pixel_threshold;
     int sat_count    = cv::countNonZero(sat_mask);

@@ -15,6 +15,7 @@ reports/coco_*
 reports/*_v02_*
 reports/*_v03_*
 reports/*_v031_*
+reports/*_v032_*
 reports/*.json
 reports/*.csv
 reports/*.log

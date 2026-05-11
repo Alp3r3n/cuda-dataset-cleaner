@@ -1,28 +1,28 @@
 #pragma once
 #include <cstdint>
+#include <cuda_runtime.h>
 
-// Launchers no longer allocate or free their own scratch buffers.
-// The caller (CudaQualityAnalyzer) owns persistent device-side scratch
-// memory and passes a pointer in. Sizing requirements:
-//   d_partial (float) must hold at least max(grid_1d, grid_2d) floats, where
-//     grid_1d = ceil(num_pixels / 256)
-//     grid_2d = ceil(width / 16) * ceil(height / 16)
-//   d_partial (int)   must hold at least grid_1d ints.
+// Each launcher returns the cudaError_t from the most recent failing CUDA
+// API call (or cudaSuccess). Metric values are written through `out_value`.
+// Scratch buffers must be sized by the caller (CudaQualityAnalyzer) — see
+// `CudaQualityAnalyzer::compute()` for the contract.
 extern "C" {
 
-void  launch_grayscale_kernel(const uint8_t* d_bgr, uint8_t* d_gray,
-                              int width, int height);
+cudaError_t launch_grayscale_kernel(const uint8_t* d_bgr, uint8_t* d_gray,
+                                    int width, int height);
 
-float launch_brightness_kernel(const uint8_t* d_gray, int num_pixels,
-                               float* d_partial);
+cudaError_t launch_brightness_kernel(const uint8_t* d_gray, int num_pixels,
+                                     float* d_partial, float* out_value);
 
-float launch_contrast_kernel(const uint8_t* d_gray, int num_pixels,
-                             float mean_brightness, float* d_partial);
+cudaError_t launch_contrast_kernel(const uint8_t* d_gray, int num_pixels,
+                                   float mean_brightness, float* d_partial,
+                                   float* out_value);
 
-float launch_sobel_kernel(const uint8_t* d_gray, int width, int height,
-                          float* d_partial);
+cudaError_t launch_sobel_kernel(const uint8_t* d_gray, int width, int height,
+                                float* d_partial, float* out_value);
 
-float launch_saturation_kernel(const uint8_t* d_gray, int num_pixels,
-                               float threshold, int* d_partial);
+cudaError_t launch_saturation_kernel(const uint8_t* d_gray, int num_pixels,
+                                     float threshold, int* d_partial,
+                                     float* out_value);
 
 }

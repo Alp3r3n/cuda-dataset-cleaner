@@ -306,6 +306,18 @@ This is a smoke-level check, not a full formal verification. It helps catch comm
 
 ## Recent Changes
 
+### v0.3.2 — Reliability & validation cleanup
+
+- Every CUDA API call inside `CudaQualityAnalyzer::compute()` is now checked and surfaced through a `CudaStatus { bool ok; std::string message; }` return type. Kernel launchers return `cudaError_t` and write their result through an out-parameter.
+- A failed CUDA run no longer produces zero-valued metrics that get scored: `main.cpp` tracks `have_metrics` and routes the failure into the existing `load_error` / `error_message` fields instead of running `applyFlagsAndScore` on defaults.
+- `CudaBuffer::allocate` / `ensureCapacity` now return `bool` so allocation failures propagate.
+- CPU `edge_score` now averages over the same interior region as the CUDA kernel (skipping the 1-pixel Sobel border) — small parity discrepancy removed.
+- JSON string escaping handles `\n`, `\r`, `\t`, `\b`, `\f`, and `\u00XX` for other control characters. CSV writing now uses RFC 4180 quoting (only quote when needed; double internal quotes).
+- Unused config keys `keep_if_score_gte` and `delete_if_score_lt` removed — the recommendation has been fully flag-combination based since v0.3.x.
+- Added `tests/run_tests.py` with checks for the binary, recommendation distribution, config override, JSON validity, CSV format, and CPU/CUDA metric parity.
+
+Output schema, CLI behavior, kernel math, and the COCO val2017 recommendation distribution (4909 keep / 91 review / 0 delete) are unchanged.
+
 ### v0.3.1 — CUDA timed-region cleanup
 
 - Reduction scratch buffers (`d_partial` for brightness, contrast, sobel, saturation) are now owned by `CudaQualityAnalyzer` and reused across images — kernel launchers no longer call `cudaMalloc` / `cudaFree` per launch.

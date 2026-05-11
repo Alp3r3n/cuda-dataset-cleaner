@@ -29,23 +29,24 @@ CudaBuffer& CudaBuffer::operator=(CudaBuffer&& other) noexcept {
     return *this;
 }
 
-void CudaBuffer::allocate(size_t bytes) {
+bool CudaBuffer::allocate(size_t bytes) {
     free();
-    if (bytes == 0) return;
+    if (bytes == 0) return true;
     cudaError_t err = cudaMalloc(&ptr_, bytes);
     if (err != cudaSuccess) {
         fprintf(stderr, "CudaBuffer::allocate(%zu) failed: %s\n",
                 bytes, cudaGetErrorString(err));
         ptr_  = nullptr;
         size_ = 0;
-        return;
+        return false;
     }
     size_ = bytes;
+    return true;
 }
 
-void CudaBuffer::ensureCapacity(size_t bytes) {
-    if (ptr_ != nullptr && bytes <= size_) return;
-    allocate(bytes);
+bool CudaBuffer::ensureCapacity(size_t bytes) {
+    if (ptr_ != nullptr && bytes <= size_) return true;
+    return allocate(bytes);
 }
 
 void CudaBuffer::free() {

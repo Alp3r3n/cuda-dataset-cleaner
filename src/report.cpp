@@ -2,14 +2,56 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <cstdio>
 
+// Escape a string for use as a JSON string value. Handles backslash, quote,
+// the common control-character escapes (\n, \r, \t, \b, \f) and emits
+// \u00XX for any other ASCII control character (< 0x20).
 static std::string jsonEscape(const std::string& s) {
     std::string out;
-    for (char c : s) {
-        if      (c == '"')  out += "\\\"";
-        else if (c == '\\') out += "\\\\";
-        else                out += c;
+    out.reserve(s.size());
+    for (unsigned char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            case '\b': out += "\\b";  break;
+            case '\f': out += "\\f";  break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
+                    out += buf;
+                } else {
+                    out += (char)c;
+                }
+        }
     }
+    return out;
+}
+
+// Escape a string for a CSV field per RFC 4180: if it contains a comma,
+// quote, CR, or LF the field is wrapped in double quotes and any internal
+// double quote is doubled.
+static std::string csvEscape(const std::string& s) {
+    bool needs_quote = false;
+    for (char c : s) {
+        if (c == ',' || c == '"' || c == '\n' || c == '\r') {
+            needs_quote = true;
+            break;
+        }
+    }
+    if (!needs_quote) return s;
+    std::string out;
+    out.reserve(s.size() + 2);
+    out += '"';
+    for (char c : s) {
+        if (c == '"') out += "\"\"";
+        else          out += c;
+    }
+    out += '"';
     return out;
 }
 
@@ -96,7 +138,7 @@ void writeCSV(const std::string& path,
             if (i > 0) flags_str += ";";
             flags_str += m.flags[i];
         }
-        f << "\"" << jsonEscape(m.file_path) << "\","
+        f << csvEscape(m.file_path) << ","
           << m.width << ","
           << m.height << ","
           << m.brightness << ","
@@ -104,8 +146,8 @@ void writeCSV(const std::string& path,
           << m.edge_score << ","
           << m.saturated_pixel_ratio << ","
           << m.quality_score << ","
-          << "\"" << flags_str << "\","
-          << m.recommendation << ","
+          << csvEscape(flags_str) << ","
+          << csvEscape(m.recommendation) << ","
           << m.cpu_time_ms << ","
           << m.cuda_time_ms << "\n";
     }

@@ -104,21 +104,43 @@ int main(int argc, char* argv[]) {
         m.width  = img.cols;
         m.height = img.rows;
 
-        if (run_cpu)  computeCPUMetrics(img, m, thresholds);
+        // Track whether at least one backend produced valid metrics. If
+        // neither does (CUDA fails and CPU is disabled, or both flags off),
+        // we record the failure and skip flagging/scoring so default zero
+        // metrics never reach applyFlagsAndScore.
+        bool have_metrics = false;
+
+        if (run_cpu) {
+            computeCPUMetrics(img, m, thresholds);
+            have_metrics = true;
+        }
+
         if (run_cuda) {
             ImageMetrics cuda_m = m;
-            if (cuda_analyzer.compute(img, cuda_m, thresholds)) {
-                // Use CUDA metrics as primary; keep CPU time from run_cpu pass
+            CudaStatus status = cuda_analyzer.compute(img, cuda_m, thresholds);
+            if (status.ok) {
                 m.brightness            = cuda_m.brightness;
                 m.contrast              = cuda_m.contrast;
                 m.edge_score            = cuda_m.edge_score;
                 m.saturated_pixel_ratio = cuda_m.saturated_pixel_ratio;
                 m.cuda_time_ms          = cuda_m.cuda_time_ms;
+                have_metrics = true;
+            } else if (!have_metrics) {
+                // No CPU fallback — record the failure and move on.
+                m.load_error = true;
+                m.error_message = "CUDA metrics failed: " + status.message;
+                results.push_back(std::move(m));
+                continue;
+            } else {
+                fprintf(stderr,
+                        "WARN: CUDA metrics failed for %s: %s (keeping CPU metrics)\n",
+                        fpath.c_str(), status.message.c_str());
             }
         }
-        if (!run_cuda && !run_cpu) {
+
+        if (!have_metrics) {
             m.load_error = true;
-            m.error_message = "Both --no-cpu and --no-cuda specified";
+            m.error_message = "No metric backend produced valid metrics";
             results.push_back(std::move(m));
             continue;
         }

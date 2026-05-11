@@ -20,21 +20,29 @@ __global__ void contrast_reduce_kernel(const uint8_t* gray, float* partial, floa
 }
 
 extern "C"
-float launch_contrast_kernel(const uint8_t* d_gray, int num_pixels,
-                             float mean_brightness, float* d_partial) {
+cudaError_t launch_contrast_kernel(const uint8_t* d_gray, int num_pixels,
+                                   float mean_brightness, float* d_partial,
+                                   float* out_value) {
     const int block_size = 256;
     int grid_size = (num_pixels + block_size - 1) / block_size;
 
     contrast_reduce_kernel<<<grid_size, block_size, block_size * sizeof(float)>>>(
         d_gray, d_partial, mean_brightness, num_pixels);
-    cudaGetLastError();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return err;
 
     float* h_partial = new float[grid_size];
-    cudaMemcpy(h_partial, d_partial, grid_size * sizeof(float), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_partial, d_partial, grid_size * sizeof(float),
+                     cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        delete[] h_partial;
+        return err;
+    }
 
     float sum_sq = 0.0f;
     for (int i = 0; i < grid_size; i++) sum_sq += h_partial[i];
     delete[] h_partial;
 
-    return sqrtf(sum_sq / (float)num_pixels);
+    *out_value = (num_pixels > 0) ? sqrtf(sum_sq / (float)num_pixels) : 0.0f;
+    return cudaSuccess;
 }

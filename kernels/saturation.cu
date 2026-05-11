@@ -19,9 +19,13 @@ __global__ void saturation_count_kernel(const uint8_t* gray, int* partial,
 }
 
 extern "C"
-float launch_saturation_kernel(const uint8_t* d_gray, int num_pixels,
-                               float threshold, int* d_partial) {
-    if (num_pixels <= 0) return 0.0f;
+cudaError_t launch_saturation_kernel(const uint8_t* d_gray, int num_pixels,
+                                     float threshold, int* d_partial,
+                                     float* out_value) {
+    if (num_pixels <= 0) {
+        *out_value = 0.0f;
+        return cudaSuccess;
+    }
 
     const int block_size = 256;
     int grid_size = (num_pixels + block_size - 1) / block_size;
@@ -32,14 +36,21 @@ float launch_saturation_kernel(const uint8_t* d_gray, int num_pixels,
 
     saturation_count_kernel<<<grid_size, block_size, block_size * sizeof(int)>>>(
         d_gray, d_partial, thresh_u8, num_pixels);
-    cudaGetLastError();
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) return err;
 
     int* h_partial = new int[grid_size];
-    cudaMemcpy(h_partial, d_partial, grid_size * sizeof(int), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_partial, d_partial, grid_size * sizeof(int),
+                     cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        delete[] h_partial;
+        return err;
+    }
 
     long long total = 0;
     for (int i = 0; i < grid_size; i++) total += h_partial[i];
     delete[] h_partial;
 
-    return (float)total / (float)num_pixels;
+    *out_value = (float)total / (float)num_pixels;
+    return cudaSuccess;
 }

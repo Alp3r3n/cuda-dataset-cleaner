@@ -16,8 +16,6 @@ struct Thresholds {
     int   penalty_too_dark           = 25;
     int   penalty_too_bright         = 25;
     int   penalty_low_contrast       = 20;
-    int   keep_score                 = 70;
-    int   delete_score               = 40;
 };
 
 struct ImageMetrics {

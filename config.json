@@ -11,7 +11,5 @@
   "penalty_blurry": 35,
   "penalty_too_dark": 25,
   "penalty_too_bright": 25,
-  "penalty_low_contrast": 20,
-  "keep_if_score_gte": 70,
-  "delete_if_score_lt": 40
+  "penalty_low_contrast": 20
 }

@@ -34,28 +34,34 @@ __global__ void sobel_edge_kernel(const uint8_t* gray, float* partial,
 }
 
 extern "C"
-float launch_sobel_kernel(const uint8_t* d_gray, int width, int height, float* d_partial) {
+cudaError_t launch_sobel_kernel(const uint8_t* d_gray, int width, int height,
+                                float* d_partial, float* out_value) {
     dim3 block(16, 16);
     dim3 grid((width + 15) / 16, (height + 15) / 16);
     int num_blocks = grid.x * grid.y;
 
-    // The kernel uses atomicAdd, so the scratch buffer must start at zero.
-    // The scratch is shared across kernel calls in the same image, so we
-    // explicitly clear before this kernel rather than relying on the
-    // (possibly stale) contents left by the brightness/contrast launchers.
-    cudaMemsetAsync(d_partial, 0, num_blocks * sizeof(float));
+    // Kernel uses atomicAdd, so scratch must start at zero.
+    cudaError_t err = cudaMemsetAsync(d_partial, 0, num_blocks * sizeof(float));
+    if (err != cudaSuccess) return err;
 
     int shared_size = block.x * block.y * sizeof(float);
     int interior = (width > 2 && height > 2) ? (width - 2) * (height - 2) : 1;
     sobel_edge_kernel<<<grid, block, shared_size>>>(d_gray, d_partial, width, height, interior);
-    cudaGetLastError();
+    err = cudaGetLastError();
+    if (err != cudaSuccess) return err;
 
     float* h_partial = new float[num_blocks];
-    cudaMemcpy(h_partial, d_partial, num_blocks * sizeof(float), cudaMemcpyDeviceToHost);
+    err = cudaMemcpy(h_partial, d_partial, num_blocks * sizeof(float),
+                     cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        delete[] h_partial;
+        return err;
+    }
 
     float total = 0.0f;
     for (int i = 0; i < num_blocks; i++) total += h_partial[i];
     delete[] h_partial;
 
-    return total / (float)interior;
+    *out_value = total / (float)interior;
+    return cudaSuccess;
 }

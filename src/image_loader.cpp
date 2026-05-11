@@ -125,6 +125,4 @@ void loadThresholdsFromFile(const std::string& path, Thresholds& t) {
     t.penalty_too_dark           = (int)extractFloat(content, "penalty_too_dark",          (float)t.penalty_too_dark);
     t.penalty_too_bright         = (int)extractFloat(content, "penalty_too_bright",        (float)t.penalty_too_bright);
     t.penalty_low_contrast       = (int)extractFloat(content, "penalty_low_contrast",      (float)t.penalty_low_contrast);
-    t.keep_score                 = (int)extractFloat(content, "keep_if_score_gte",         (float)t.keep_score);
-    t.delete_score               = (int)extractFloat(content, "delete_if_score_lt",        (float)t.delete_score);
 }

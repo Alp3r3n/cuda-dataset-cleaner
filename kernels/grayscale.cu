@@ -17,9 +17,10 @@ __global__ void bgr_to_gray_kernel(const uint8_t* bgr, uint8_t* gray, int width,
 }
 
 extern "C"
-void launch_grayscale_kernel(const uint8_t* d_bgr, uint8_t* d_gray, int width, int height) {
+cudaError_t launch_grayscale_kernel(const uint8_t* d_bgr, uint8_t* d_gray,
+                                    int width, int height) {
     dim3 block(16, 16);
     dim3 grid((width + 15) / 16, (height + 15) / 16);
     bgr_to_gray_kernel<<<grid, block>>>(d_bgr, d_gray, width, height);
-    cudaGetLastError();
+    return cudaGetLastError();
 }

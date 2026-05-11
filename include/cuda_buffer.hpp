@@ -16,11 +16,12 @@ public:
     CudaBuffer& operator=(CudaBuffer&& other) noexcept;
 
     // Replace the existing allocation with one of `bytes` bytes.
-    // Frees the old allocation first.
-    void allocate(size_t bytes);
+    // Frees the old allocation first. Returns true on success.
+    bool allocate(size_t bytes);
 
     // Grow the allocation to at least `bytes` bytes. No-op if already large enough.
-    void ensureCapacity(size_t bytes);
+    // Returns true on success (including the no-op case).
+    bool ensureCapacity(size_t bytes);
 
     // Release the current allocation (if any). Safe to call multiple times.
     void free();
