@@ -11,5 +11,21 @@
   "penalty_blurry": 35,
   "penalty_too_dark": 25,
   "penalty_too_bright": 25,
-  "penalty_low_contrast": 20
+  "penalty_low_contrast": 20,
+  "presets": {
+    "default": {
+    },
+    "relaxed": {
+      "too_dark_if_less_than": 25.0,
+      "low_contrast_if_less_than": 15.0,
+      "blurry_if_edge_score_less_than": 2.0,
+      "severe_dark_threshold": 5.0
+    },
+    "strict": {
+      "too_dark_if_less_than": 60.0,
+      "low_contrast_if_less_than": 35.0,
+      "blurry_if_edge_score_less_than": 8.0,
+      "severe_dark_threshold": 20.0
+    }
+  }
 }

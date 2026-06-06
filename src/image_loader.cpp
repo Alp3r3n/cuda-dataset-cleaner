@@ -4,6 +4,8 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <cstdio>
+#include <optional>
 #include <opencv2/imgcodecs.hpp>
 
 namespace fs = std::filesystem;
@@ -107,11 +109,7 @@ static float extractFloat(const std::string& content, const std::string& key, fl
     catch (...) { return default_val; }
 }
 
-void loadThresholdsFromFile(const std::string& path, Thresholds& t) {
-    std::ifstream f(path);
-    if (!f.is_open()) return;
-    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-
+static void applyKeysToThresholds(const std::string& content, Thresholds& t) {
     t.too_dark_below             = extractFloat(content, "too_dark_if_less_than",         t.too_dark_below);
     t.severe_dark_threshold      = extractFloat(content, "severe_dark_threshold",          t.severe_dark_threshold);
     t.too_bright_above           = extractFloat(content, "too_bright_if_greater_than",     t.too_bright_above);
@@ -125,4 +123,63 @@ void loadThresholdsFromFile(const std::string& path, Thresholds& t) {
     t.penalty_too_dark           = (int)extractFloat(content, "penalty_too_dark",          (float)t.penalty_too_dark);
     t.penalty_too_bright         = (int)extractFloat(content, "penalty_too_bright",        (float)t.penalty_too_bright);
     t.penalty_low_contrast       = (int)extractFloat(content, "penalty_low_contrast",      (float)t.penalty_low_contrast);
+}
+
+// Returns the contents (without surrounding braces) of the JSON object whose
+// key matches `key`. Returns nullopt if the key is absent or its value isn't
+// an object. Distinguishes "key not found" from "empty object" (which the
+// caller needs for the empty `"default": {}` preset case).
+static std::optional<std::string> extractObjectBody(const std::string& content,
+                                                    const std::string& key) {
+    std::string search = "\"" + key + "\"";
+    size_t pos = content.find(search);
+    if (pos == std::string::npos) return std::nullopt;
+    pos = content.find(':', pos + search.size());
+    if (pos == std::string::npos) return std::nullopt;
+    pos = content.find('{', pos);
+    if (pos == std::string::npos) return std::nullopt;
+
+    int depth = 1;
+    size_t start = pos + 1;
+    size_t i = start;
+    while (i < content.size() && depth > 0) {
+        if      (content[i] == '{') depth++;
+        else if (content[i] == '}') {
+            depth--;
+            if (depth == 0) return content.substr(start, i - start);
+        }
+        i++;
+    }
+    return std::nullopt;
+}
+
+void loadThresholdsFromFile(const std::string& path, Thresholds& t) {
+    std::ifstream f(path);
+    if (!f.is_open()) return;
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    applyKeysToThresholds(content, t);
+}
+
+void applyPreset(const std::string& path, const std::string& preset_name, Thresholds& t) {
+    if (preset_name.empty()) return;
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        fprintf(stderr, "WARN: cannot open '%s' for preset lookup\n", path.c_str());
+        return;
+    }
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+    auto presets_block = extractObjectBody(content, "presets");
+    if (!presets_block) {
+        fprintf(stderr, "WARN: config has no 'presets' block; --preset %s ignored\n",
+                preset_name.c_str());
+        return;
+    }
+    auto preset_block = extractObjectBody(*presets_block, preset_name);
+    if (!preset_block) {
+        fprintf(stderr, "WARN: preset '%s' not found in config\n", preset_name.c_str());
+        return;
+    }
+    // Empty body (e.g. `"default": {}`) is valid — applyKeysToThresholds is a no-op on it.
+    applyKeysToThresholds(*preset_block, t);
 }

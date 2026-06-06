@@ -140,6 +140,105 @@ def test_csv_format():
     return True, ""
 
 
+def test_preset_selection():
+    """Two distinct presets must produce different flag-count distributions.
+
+    Compares strict vs relaxed (rather than default vs preset) because the
+    synthetic test_dataset uses extreme metric values that fall outside any
+    threshold band default-vs-strict can distinguish.
+    """
+    cfg = os.path.join(ROOT, "config.json")
+    if not os.path.isfile(cfg):
+        return "skip", "config.json missing in project root"
+    with tempfile.TemporaryDirectory() as tmp:
+        s_j = os.path.join(tmp, "strict.json");  s_c = os.path.join(tmp, "strict.csv")
+        r_j = os.path.join(tmp, "relaxed.json"); r_c = os.path.join(tmp, "relaxed.csv")
+        rs = run_scan(["--output", s_j, "--csv", s_c, "--config", cfg, "--preset", "strict"])
+        rr = run_scan(["--output", r_j, "--csv", r_c, "--config", cfg, "--preset", "relaxed"])
+        if rs.returncode != 0:
+            return False, f"strict scan failed: {rs.stderr.strip()}"
+        if rr.returncode != 0:
+            return False, f"relaxed scan failed: {rr.stderr.strip()}"
+        with open(s_j) as f: s_sum = json.load(f)["summary"]
+        with open(r_j) as f: r_sum = json.load(f)["summary"]
+        counts = ["blurry_count", "too_dark_count", "low_contrast_count"]
+        if all(s_sum[k] == r_sum[k] for k in counts):
+            return False, "strict and relaxed presets produced identical flag counts"
+    return True, ""
+
+
+def test_organize_dry_run():
+    """Without --copy-files, --organize-output writes plan only — no buckets."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = os.path.join(tmp, "organize_out")
+        jp = os.path.join(tmp, "r.json"); cp = os.path.join(tmp, "s.csv")
+        res = run_scan(["--output", jp, "--csv", cp, "--organize-output", out_dir])
+        if res.returncode != 0:
+            return False, f"dry-run scan failed: {res.stderr.strip()}"
+        plan = os.path.join(out_dir, "organize_plan.csv")
+        if not os.path.isfile(plan):
+            return False, "organize_plan.csv was not created"
+        for bucket in ("keep", "review", "delete"):
+            if os.path.isdir(os.path.join(out_dir, bucket)):
+                return False, f"dry-run created {bucket}/ subdir (should not copy)"
+        with open(plan, newline="") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            if header != ["source_path", "destination_path", "recommendation", "action"]:
+                return False, f"plan header mismatch: {header}"
+            rows = list(reader)
+            if not rows:
+                return False, "plan has no rows"
+            for row in rows:
+                if row[3] != "dry-run-copy" and row[3] != "skip":
+                    return False, f"unexpected action in dry-run plan: {row}"
+    return True, ""
+
+
+def test_organize_copy():
+    """With --copy-files, files land in keep/review/delete buckets; originals stay."""
+    # Snapshot source dataset modification times before the run.
+    src_files = []
+    for root, _, files in os.walk(TEST_DATASET):
+        for fn in files:
+            p = os.path.join(root, fn)
+            src_files.append((p, os.path.getmtime(p)))
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = os.path.join(tmp, "organize_out")
+        jp = os.path.join(tmp, "r.json"); cp = os.path.join(tmp, "s.csv")
+        res = run_scan(["--output", jp, "--csv", cp,
+                        "--organize-output", out_dir, "--copy-files"])
+        if res.returncode != 0:
+            return False, f"copy scan failed: {res.stderr.strip()}"
+        copied = 0
+        for root, _, files in os.walk(out_dir):
+            for fn in files:
+                if fn != "organize_plan.csv":
+                    copied += 1
+        if copied == 0:
+            return False, "no files were copied"
+    # Verify nothing under the source dataset was modified
+    for p, mtime_before in src_files:
+        if not os.path.exists(p):
+            return False, f"source file deleted by organize: {p}"
+        if abs(os.path.getmtime(p) - mtime_before) > 1e-3:
+            return False, f"source file mtime changed: {p}"
+    return True, ""
+
+
+def test_overlap_refusal():
+    """Overlapping input/output must refuse with non-zero exit."""
+    with tempfile.TemporaryDirectory() as tmp:
+        jp = os.path.join(tmp, "r.json"); cp = os.path.join(tmp, "s.csv")
+        res = run_scan(["--output", jp, "--csv", cp,
+                        "--organize-output", TEST_DATASET, "--copy-files"])
+        if res.returncode == 0:
+            return False, "binary did not refuse overlapping output dir"
+        if "overlap" not in res.stderr.lower() and "refus" not in res.stderr.lower():
+            return False, f"refusal message unclear: {res.stderr.strip()}"
+    return True, ""
+
+
 def test_cpu_cuda_parity():
     with tempfile.TemporaryDirectory() as tmp:
         # CPU-only
@@ -193,6 +292,10 @@ TESTS = [
     ("config_override",            test_config_override),
     ("json_validity",              test_json_validity),
     ("csv_format",                 test_csv_format),
+    ("preset_selection",           test_preset_selection),
+    ("organize_dry_run",           test_organize_dry_run),
+    ("organize_copy",              test_organize_copy),
+    ("overlap_refusal",            test_overlap_refusal),
     ("cpu_cuda_parity",            test_cpu_cuda_parity),
 ]
 

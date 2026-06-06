@@ -306,6 +306,16 @@ This is a smoke-level check, not a full formal verification. It helps catch comm
 
 ## Recent Changes
 
+### v0.4 — Safe organize mode + presets
+
+Three new CLI flags, all opt-in. Default behavior (`scan` with no organize flags) is unchanged.
+
+- `--preset <name>` — applies a preset block (`default` / `relaxed` / `strict`) from `config.json`. Presets are nested under a top-level `"presets"` object and override individual thresholds. If `--config` is omitted, `./config.json` is used as the preset source.
+- `--organize-output <dir>` — writes an `organize_plan.csv` mapping each scanned image to `<dir>/{keep,review,delete}/<relative-path>`. **Without** `--copy-files` this is dry-run only — no image files are copied.
+- `--copy-files` — combined with `--organize-output`, actually copies files into the bucket subdirectories, preserving the source's relative folder structure. Original files are never moved or deleted.
+
+If the output directory overlaps the input directory (same path, output inside input, or input inside output), the tool refuses with exit code `2` before any scan or filesystem work. Plan CSV columns: `source_path,destination_path,recommendation,action`.
+
 ### v0.3.2 — Reliability & validation cleanup
 
 - Every CUDA API call inside `CudaQualityAnalyzer::compute()` is now checked and surfaced through a `CudaStatus { bool ok; std::string message; }` return type. Kernel launchers return `cudaError_t` and write their result through an out-parameter.
@@ -348,7 +358,7 @@ v0.3 introduced persistent BGR and grayscale device buffers. The larger timed-re
 
 ### Accuracy & Metrics
 - [ ] Add entropy score using grayscale histogram
-- [ ] Add configurable threshold presets: `relaxed`, `default`, `strict`
+- [x] Add configurable threshold presets: `relaxed`, `default`, `strict`
 - [ ] Add validation on low-light and blur-specific datasets
 
 ### Performance
@@ -371,8 +381,8 @@ v0.3 introduced persistent BGR and grayscale device buffers. The larger timed-re
 
 ### Dataset Management
 - [ ] Add duplicate detection via perceptual hash
-- [ ] Add safe dataset organize mode: `keep/`, `review/`, `delete/`
-- [ ] Add dry-run mode before moving files
+- [x] Add safe dataset organize mode: `keep/`, `review/`, `delete/`
+- [x] Add dry-run mode before moving files
 
 ### Integrations
 - [ ] Add Python API bindings

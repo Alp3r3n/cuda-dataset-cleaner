@@ -28,6 +28,7 @@ add_executable(cuda-dataset-cleaner
     src/cuda_buffer.cpp
     src/report.cpp
     src/benchmark.cpp
+    src/organizer.cpp
     $<TARGET_OBJECTS:kernels>)
 
 target_include_directories(cuda-dataset-cleaner
