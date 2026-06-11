@@ -306,6 +306,15 @@ This is a smoke-level check, not a full formal verification. It helps catch comm
 
 ## Recent Changes
 
+### v0.5 — CLI polish
+
+- Added `--help` (also `help`, `-h`, `scan --help`) and `--version` (also `version`, `-V`).
+- Clearer error messages for missing values, unknown flags/commands, `--copy-files` without `--organize-output`, and `--no-cpu --no-cuda` together. Each error includes a `Run with --help for usage.` hint and a non-zero exit code; validation runs before any scan work.
+- Small `main.cpp` cleanup: argument handling extracted into `printHelp`, `printVersion`, `parseArgs`, `validateArgs`. Scan loop, kernels, metric math, and report writers untouched.
+- Tests grew from 10 → 15: help, version, unknown flag, `--copy-files` w/o organize, `--no-cpu --no-cuda`.
+
+Default scan behavior, recommendation logic, report schemas, CUDA kernels, and the COCO val2017 distribution (4909 keep / 91 review / 0 delete) are unchanged.
+
 ### v0.4 — Safe organize mode + presets
 
 Three new CLI flags, all opt-in. Default behavior (`scan` with no organize flags) is unchanged.

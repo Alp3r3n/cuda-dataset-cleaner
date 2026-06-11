@@ -239,6 +239,66 @@ def test_overlap_refusal():
     return True, ""
 
 
+def _run_binary_raw(args):
+    """Run the binary without inserting `scan <TEST_DATASET>`; used for help/version/CLI checks."""
+    cmd = [BINARY] + list(args)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+
+def test_help_flag():
+    """--help prints usage and exits 0; mentions key options."""
+    res = _run_binary_raw(["--help"])
+    if res.returncode != 0:
+        return False, f"--help returned non-zero exit ({res.returncode})"
+    out = res.stdout
+    for needle in ("--organize-output", "--preset", "--copy-files", "scan"):
+        if needle not in out:
+            return False, f"--help output missing '{needle}'"
+    return True, ""
+
+
+def test_version_flag():
+    """--version prints version line containing v0.5 and exits 0."""
+    res = _run_binary_raw(["--version"])
+    if res.returncode != 0:
+        return False, f"--version returned non-zero exit ({res.returncode})"
+    if "v0.5" not in res.stdout:
+        return False, f"--version output missing 'v0.5': {res.stdout!r}"
+    # The bare `version` command must work too.
+    res2 = _run_binary_raw(["version"])
+    if res2.returncode != 0 or "v0.5" not in res2.stdout:
+        return False, f"'version' command did not match: rc={res2.returncode} out={res2.stdout!r}"
+    return True, ""
+
+
+def test_invalid_flag_exit_nonzero():
+    """An unknown scan flag exits non-zero with a hint pointing at --help."""
+    res = run_scan(["--this-flag-does-not-exist"])
+    if res.returncode == 0:
+        return False, "unknown flag did not produce non-zero exit"
+    if "--help" not in res.stderr:
+        return False, f"unknown-flag error should hint about --help: {res.stderr!r}"
+    return True, ""
+
+
+def test_copy_files_requires_organize_output():
+    """--copy-files without --organize-output exits non-zero."""
+    res = run_scan(["--copy-files"])
+    if res.returncode == 0:
+        return False, "--copy-files without --organize-output should fail"
+    if "organize-output" not in res.stderr:
+        return False, f"error should mention --organize-output: {res.stderr!r}"
+    return True, ""
+
+
+def test_no_cpu_no_cuda_rejected():
+    """Disabling both metric backends is rejected at CLI validation."""
+    res = run_scan(["--no-cpu", "--no-cuda"])
+    if res.returncode == 0:
+        return False, "--no-cpu --no-cuda should fail"
+    return True, ""
+
+
 def test_cpu_cuda_parity():
     with tempfile.TemporaryDirectory() as tmp:
         # CPU-only
@@ -287,16 +347,21 @@ def test_cpu_cuda_parity():
 # --- driver -------------------------------------------------------------
 
 TESTS = [
-    ("binary_exists",              test_binary_exists),
-    ("recommendation_distribution", test_recommendation_distribution),
-    ("config_override",            test_config_override),
-    ("json_validity",              test_json_validity),
-    ("csv_format",                 test_csv_format),
-    ("preset_selection",           test_preset_selection),
-    ("organize_dry_run",           test_organize_dry_run),
-    ("organize_copy",              test_organize_copy),
-    ("overlap_refusal",            test_overlap_refusal),
-    ("cpu_cuda_parity",            test_cpu_cuda_parity),
+    ("binary_exists",                    test_binary_exists),
+    ("recommendation_distribution",      test_recommendation_distribution),
+    ("config_override",                  test_config_override),
+    ("json_validity",                    test_json_validity),
+    ("csv_format",                       test_csv_format),
+    ("preset_selection",                 test_preset_selection),
+    ("organize_dry_run",                 test_organize_dry_run),
+    ("organize_copy",                    test_organize_copy),
+    ("overlap_refusal",                  test_overlap_refusal),
+    ("help_flag",                        test_help_flag),
+    ("version_flag",                     test_version_flag),
+    ("invalid_flag_exit_nonzero",        test_invalid_flag_exit_nonzero),
+    ("copy_files_requires_organize",     test_copy_files_requires_organize_output),
+    ("no_cpu_no_cuda_rejected",          test_no_cpu_no_cuda_rejected),
+    ("cpu_cuda_parity",                  test_cpu_cuda_parity),
 ]
 
 

@@ -17,6 +17,7 @@ reports/*_v03_*
 reports/*_v031_*
 reports/*_v032_*
 reports/*_v04_*
+reports/*_v05_*
 
 # Organize-mode outputs created by --organize-output
 organize_plan.csv

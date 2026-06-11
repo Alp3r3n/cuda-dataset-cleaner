@@ -10,91 +10,180 @@
 #include <vector>
 #include <unistd.h>
 
-static void printUsage(const char* bin) {
-    printf("Usage: %s scan <input_path> [options]\n\n"
-           "Options:\n"
-           "  --output <path>           JSON report path (default: report.json)\n"
-           "  --csv <path>              CSV summary path (default: summary.csv)\n"
-           "  --recursive               Scan subdirectories (default: on)\n"
-           "  --no-recursive            Do not scan subdirectories\n"
-           "  --cpu                     Run CPU metrics (default: on)\n"
-           "  --no-cpu                  Skip CPU metrics\n"
-           "  --cuda                    Run CUDA metrics (default: on)\n"
-           "  --no-cuda                 Skip CUDA metrics\n"
-           "  --config <path>           Load thresholds from JSON config\n"
-           "  --preset <name>           Apply preset block from config (default|relaxed|strict)\n"
-           "  --organize-output <dir>   Generate organize plan (dry-run unless --copy-files)\n"
-           "  --copy-files              With --organize-output, copy files into keep/review/delete\n\n"
-           "Examples:\n"
-           "  %s scan ./dataset --output report.json --csv summary.csv\n"
-           "  %s scan ./dataset --preset strict --organize-output ./triage\n"
-           "  %s scan ./dataset --organize-output ./triage --copy-files\n",
-           bin, bin, bin, bin);
-}
+static constexpr const char* APP_NAME    = "CudaDatasetCleaner";
+static constexpr const char* APP_VERSION = "0.5";
 
-int main(int argc, char* argv[]) {
-    if (argc < 3 || std::string(argv[1]) != "scan") {
-        printUsage(argv[0]);
-        return 1;
-    }
-
-    std::string input_path      = argv[2];
+struct ParsedArgs {
+    std::string input_path;
     std::string output_path     = "report.json";
     std::string csv_path        = "summary.csv";
-    std::string config_path     = "";
-    std::string preset_name     = "";
-    std::string organize_output = "";
+    std::string config_path;
+    std::string preset_name;
+    std::string organize_output;
     bool recursive  = true;
     bool run_cpu    = true;
     bool run_cuda   = true;
     bool copy_files = false;
+};
 
+static void printHelp() {
+    printf(
+        "%s v%s -- CUDA/C++ image dataset quality scanner.\n"
+        "\n"
+        "USAGE:\n"
+        "  cuda-dataset-cleaner <command> [options]\n"
+        "\n"
+        "COMMANDS:\n"
+        "  scan <path>                Scan an image folder and write report files.\n"
+        "  help, --help, -h           Show this help message and exit.\n"
+        "  version, --version, -V     Show version and exit.\n"
+        "\n"
+        "SCAN OPTIONS:\n"
+        "  --output <path>            JSON report path (default: report.json)\n"
+        "  --csv <path>               CSV summary path (default: summary.csv)\n"
+        "  --recursive                Scan subdirectories (default: on)\n"
+        "  --no-recursive             Do not scan subdirectories\n"
+        "  --cpu                      Run CPU metrics (default: on)\n"
+        "  --no-cpu                   Skip CPU metrics\n"
+        "  --cuda                     Run CUDA metrics (default: on)\n"
+        "  --no-cuda                  Skip CUDA metrics\n"
+        "  --config <path>            Load thresholds from JSON config\n"
+        "  --preset <name>            Apply preset (default | relaxed | strict) from config\n"
+        "  --organize-output <dir>    Generate organize plan (dry-run unless --copy-files)\n"
+        "  --copy-files               With --organize-output, copy files into keep/review/delete\n"
+        "\n"
+        "EXAMPLES:\n"
+        "  # Basic scan, default thresholds\n"
+        "  cuda-dataset-cleaner scan ./dataset --output report.json --csv summary.csv\n"
+        "\n"
+        "  # Apply strict preset from config.json\n"
+        "  cuda-dataset-cleaner scan ./dataset --preset strict\n"
+        "\n"
+        "  # Dry-run organize: write organize_plan.csv only, no copies\n"
+        "  cuda-dataset-cleaner scan ./dataset --organize-output ./triage\n"
+        "\n"
+        "  # Copy files into bucket folders (originals are never moved)\n"
+        "  cuda-dataset-cleaner scan ./dataset --organize-output ./triage --copy-files\n",
+        APP_NAME, APP_VERSION);
+}
+
+static void printVersion() {
+    printf("%s v%s\n", APP_NAME, APP_VERSION);
+    printf("CUDA/C++ image dataset quality scanner\n");
+}
+
+static void hint() {
+    fprintf(stderr, "Run with --help for usage.\n");
+}
+
+static bool needValue(int i, int argc, const char* flag) {
+    if (i + 1 >= argc) {
+        fprintf(stderr, "ERROR: %s requires a value.\n", flag);
+        hint();
+        return false;
+    }
+    return true;
+}
+
+// argv[1] is "scan", argv[2] is input_path, argv[3..] are options.
+static bool parseArgs(int argc, char* argv[], ParsedArgs& out) {
+    out.input_path = argv[2];
     for (int i = 3; i < argc; i++) {
         std::string arg = argv[i];
-        if      (arg == "--output"           && i+1 < argc) output_path     = argv[++i];
-        else if (arg == "--csv"              && i+1 < argc) csv_path        = argv[++i];
-        else if (arg == "--config"           && i+1 < argc) config_path     = argv[++i];
-        else if (arg == "--preset"           && i+1 < argc) preset_name     = argv[++i];
-        else if (arg == "--organize-output"  && i+1 < argc) organize_output = argv[++i];
-        else if (arg == "--copy-files")      copy_files = true;
-        else if (arg == "--recursive")       recursive  = true;
-        else if (arg == "--no-recursive")    recursive  = false;
-        else if (arg == "--cpu")             run_cpu    = true;
-        else if (arg == "--no-cpu")          run_cpu    = false;
-        else if (arg == "--cuda")            run_cuda   = true;
-        else if (arg == "--no-cuda")         run_cuda   = false;
+        if      (arg == "--output")           { if (!needValue(i, argc, "--output"))           return false; out.output_path     = argv[++i]; }
+        else if (arg == "--csv")              { if (!needValue(i, argc, "--csv"))              return false; out.csv_path        = argv[++i]; }
+        else if (arg == "--config")           { if (!needValue(i, argc, "--config"))           return false; out.config_path     = argv[++i]; }
+        else if (arg == "--preset")           { if (!needValue(i, argc, "--preset"))           return false; out.preset_name     = argv[++i]; }
+        else if (arg == "--organize-output")  { if (!needValue(i, argc, "--organize-output"))  return false; out.organize_output = argv[++i]; }
+        else if (arg == "--copy-files")       out.copy_files = true;
+        else if (arg == "--recursive")        out.recursive  = true;
+        else if (arg == "--no-recursive")     out.recursive  = false;
+        else if (arg == "--cpu")              out.run_cpu    = true;
+        else if (arg == "--no-cpu")           out.run_cpu    = false;
+        else if (arg == "--cuda")             out.run_cuda   = true;
+        else if (arg == "--no-cuda")          out.run_cuda   = false;
         else {
-            fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
-            printUsage(argv[0]);
-            return 1;
+            fprintf(stderr, "ERROR: unknown argument: %s\n", arg.c_str());
+            hint();
+            return false;
         }
     }
+    return true;
+}
 
-    // Refuse destructive layouts upfront, before doing any scan work.
-    if (!organize_output.empty()) {
-        if (organizeOutputOverlapsInput(input_path, organize_output)) {
+static bool validateArgs(const ParsedArgs& a) {
+    if (a.copy_files && a.organize_output.empty()) {
+        fprintf(stderr, "ERROR: --copy-files requires --organize-output.\n");
+        hint();
+        return false;
+    }
+    if (!a.run_cpu && !a.run_cuda) {
+        fprintf(stderr,
+                "ERROR: --no-cpu and --no-cuda cannot both be set; "
+                "at least one metric backend must run.\n");
+        hint();
+        return false;
+    }
+    return true;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        fprintf(stderr, "ERROR: no command given.\n");
+        hint();
+        return 1;
+    }
+
+    std::string a1 = argv[1];
+    if (a1 == "--help"    || a1 == "-h" || a1 == "help")    { printHelp();    return 0; }
+    if (a1 == "--version" || a1 == "-V" || a1 == "version") { printVersion(); return 0; }
+
+    if (a1 != "scan") {
+        fprintf(stderr, "ERROR: unknown command '%s'.\n", a1.c_str());
+        hint();
+        return 1;
+    }
+
+    // 'scan --help' / 'scan -h' is a help request, not an error.
+    if (argc >= 3) {
+        std::string a2 = argv[2];
+        if (a2 == "--help" || a2 == "-h") { printHelp(); return 0; }
+    }
+
+    if (argc < 3) {
+        fprintf(stderr, "ERROR: 'scan' requires an input path.\n");
+        hint();
+        return 1;
+    }
+
+    ParsedArgs args;
+    if (!parseArgs(argc, argv, args)) return 2;
+    if (!validateArgs(args))          return 2;
+
+    // Refuse destructive layouts upfront, before any scan work.
+    if (!args.organize_output.empty()) {
+        if (organizeOutputOverlapsInput(args.input_path, args.organize_output)) {
             fprintf(stderr,
                     "ERROR: --organize-output '%s' overlaps the input path '%s'. "
                     "Refusing to organize.\n",
-                    organize_output.c_str(), input_path.c_str());
+                    args.organize_output.c_str(), args.input_path.c_str());
             return 2;
         }
     }
 
     Thresholds thresholds;
-    if (!config_path.empty())
-        loadThresholdsFromFile(config_path, thresholds);
-    if (!preset_name.empty()) {
-        // If --config wasn't supplied, fall back to the standard config.json
-        // path so a bare `--preset relaxed` still works in the project dir.
-        std::string preset_source = config_path.empty() ? std::string("config.json") : config_path;
-        applyPreset(preset_source, preset_name, thresholds);
+    if (!args.config_path.empty())
+        loadThresholdsFromFile(args.config_path, thresholds);
+    if (!args.preset_name.empty()) {
+        std::string preset_source = args.config_path.empty()
+                                  ? std::string("config.json") : args.config_path;
+        applyPreset(preset_source, args.preset_name, thresholds);
     }
 
-    printf("Scanning: %s\n", input_path.c_str());
-    auto image_paths = scanDataset(input_path, recursive);
+    printf("Scanning: %s\n", args.input_path.c_str());
+    auto image_paths = scanDataset(args.input_path, args.recursive);
     if (image_paths.empty()) {
-        printf("No supported images found in: %s\n", input_path.c_str());
+        printf("No supported images found in: %s\n", args.input_path.c_str());
         return 0;
     }
     printf("Found %zu image(s). Processing...\n", image_paths.size());
@@ -133,18 +222,14 @@ int main(int argc, char* argv[]) {
         m.width  = img.cols;
         m.height = img.rows;
 
-        // Track whether at least one backend produced valid metrics. If
-        // neither does (CUDA fails and CPU is disabled, or both flags off),
-        // we record the failure and skip flagging/scoring so default zero
-        // metrics never reach applyFlagsAndScore.
         bool have_metrics = false;
 
-        if (run_cpu) {
+        if (args.run_cpu) {
             computeCPUMetrics(img, m, thresholds);
             have_metrics = true;
         }
 
-        if (run_cuda) {
+        if (args.run_cuda) {
             ImageMetrics cuda_m = m;
             CudaStatus status = cuda_analyzer.compute(img, cuda_m, thresholds);
             if (status.ok) {
@@ -155,7 +240,6 @@ int main(int argc, char* argv[]) {
                 m.cuda_time_ms          = cuda_m.cuda_time_ms;
                 have_metrics = true;
             } else if (!have_metrics) {
-                // No CPU fallback — record the failure and move on.
                 m.load_error = true;
                 m.error_message = "CUDA metrics failed: " + status.message;
                 results.push_back(std::move(m));
@@ -182,18 +266,18 @@ int main(int argc, char* argv[]) {
     DatasetSummary summary = computeSummary(results);
     printSummary(summary);
 
-    writeJSON(output_path, results, summary);
-    printf("JSON report: %s\n", output_path.c_str());
+    writeJSON(args.output_path, results, summary);
+    printf("JSON report: %s\n", args.output_path.c_str());
 
-    writeCSV(csv_path, results);
-    printf("CSV summary: %s\n", csv_path.c_str());
+    writeCSV(args.csv_path, results);
+    printf("CSV summary: %s\n", args.csv_path.c_str());
 
-    if (!organize_output.empty()) {
+    if (!args.organize_output.empty()) {
         OrganizeOptions opts;
-        opts.output_dir  = organize_output;
-        opts.copy_files  = copy_files;
+        opts.output_dir  = args.organize_output;
+        opts.copy_files  = args.copy_files;
 
-        auto plan = buildOrganizePlan(input_path, results, opts);
+        auto plan = buildOrganizePlan(args.input_path, results, opts);
 
         std::error_code ec;
         std::filesystem::create_directories(opts.output_dir, ec);
@@ -203,7 +287,7 @@ int main(int argc, char* argv[]) {
             return 3;
         }
 
-        if (copy_files) {
+        if (args.copy_files) {
             int copied = executeOrganizeCopy(plan);
             printf("Copied %d file(s) into %s/{keep,review,delete}/\n",
                    copied, opts.output_dir.c_str());
@@ -224,6 +308,5 @@ int main(int argc, char* argv[]) {
     }
 
     printf("Done.\n");
-
     return 0;
 }
